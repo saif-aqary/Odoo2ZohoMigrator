@@ -81,9 +81,11 @@ class MigrationManager:
                 # Map lead data
                 zoho_lead = self.lead_mapper.map_lead(lead, contact_id)
                 if not zoho_lead:
+                    self.logger.debug(f"Lead mapping failed, skipping lead: {lead.get('name')}")
                     self.skipped_count += 1
                     continue
-                    
+                
+                self.logger.debug(f"Attempting to create lead in Zoho: {zoho_lead}")
                 result = self.zoho_client.create_record('Leads', zoho_lead)
                 
                 if result and result.get('data', [{}])[0].get('status') == 'success':
@@ -91,28 +93,30 @@ class MigrationManager:
                     self.logger.info(f"Successfully migrated lead: {lead.get('name')}")
                 else:
                     self.error_count += 1
-                    self.logger.error(f"Failed to migrate lead {lead.get('name')}: {result}")
+                    error_msg = f"Failed to migrate lead {lead.get('name')}: {result}"
+                    self.logger.error(error_msg)
                     results.append({
                         'success': False,
                         'name': lead.get('name'),
                         'error': result
                     })
                 
+                self.processed_count += 1
+                
                 # Rate limiting
                 time.sleep(RATE_LIMIT_DELAY)
                 
             except Exception as e:
                 self.error_count += 1
-                self.logger.error(f"Error processing lead {lead.get('name')}: {str(e)}")
+                error_msg = f"Error processing lead {lead.get('name')}: {str(e)}"
+                self.logger.error(error_msg)
+                self.logger.debug(f"Lead data: {lead}")
                 results.append({
                     'success': False,
                     'name': lead.get('name'),
                     'error': str(e)
                 })
-            
-            self.processed_count += 1
-            
-        return results
+                self.processed_count += 1
 
     def migrate_leads(self):
         """Main lead migration process"""
