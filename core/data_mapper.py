@@ -30,6 +30,7 @@ class ContactMapper:
                 'Phone': phone,
                 'Mobile': mobile,
                 'Description': odoo_contact.get('comment', ''),
+                'Odoo_ID': odoo_contact.get('contact_id'),
                 'Lead_Source': 'Odoo Migration',
                 'Contact_Type': 'Imported Contact'
             }
@@ -129,6 +130,8 @@ class LeadMapper:
             # Link to existing contact if provided
             if contact_id:
                 zoho_lead['Contact_Id'] = contact_id
+            # Assign the Lead to Specific User
+            zoho_lead['Owner'] = '6421814000003834001'
 
             logger.debug(f"Mapped lead data: {zoho_lead}")
             return zoho_lead
@@ -136,4 +139,45 @@ class LeadMapper:
         except Exception as e:
             logger.error(f"Error mapping lead: {str(e)}")
             logger.debug(f"Original lead data: {odoo_lead}")
+            return None
+        
+class RealEstateProjectMapper:
+    @staticmethod
+    def map_contact(odoo_contact: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Map Odoo contact fields to Zoho contact fields with validation"""
+        try:
+            # Clean and validate name
+            full_name = DataValidator.validate_name(odoo_contact.get('name', ''))
+            if not full_name:
+                return None
+
+            # Split name
+            name_parts = full_name.split(' ', 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else 'N/A'
+
+            # Clean and validate contact data
+            email = DataValidator.validate_email(odoo_contact.get('email'))
+            phone = DataValidator.validate_phone(odoo_contact.get('phone'))
+            mobile = DataValidator.validate_phone(odoo_contact.get('mobile'))
+
+            zoho_contact = {
+                'First_Name': first_name,
+                'Last_Name': last_name,
+                'Phone': phone,
+                'Mobile': mobile,
+                'Description': odoo_contact.get('comment', ''),
+                'Odoo_ID': odoo_contact.get('contact_id'),
+                'Lead_Source': 'Odoo Migration',
+                'Contact_Type': 'Imported Contact'
+            }
+
+            # Only add email if valid
+            if email:
+                zoho_contact['Email'] = email
+
+            # Remove empty fields
+            return {k: v for k, v in zoho_contact.items() if v}
+
+        except Exception as e:
             return None
