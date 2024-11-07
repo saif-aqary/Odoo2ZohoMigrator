@@ -1,5 +1,7 @@
 .venv/
 core/__pycache__/
 utils/__pycache__/
+config//__pycache__
 *.log
 migration.*
+*.csv
