@@ -1,7 +1,8 @@
 .venv/
 core/__pycache__/
 utils/__pycache__/
-config//__pycache__
+config/__pycache__/
+config/__pycache__/__init__.cpython-312.pyc
 *.log
 migration.*
 *.csv
