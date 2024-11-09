@@ -199,3 +199,112 @@ class ZohoClient:
 
         self.logger.info(f"Found {len(existing_contacts)} existing contacts in Zoho")
         return existing_contacts
+    def check_available_modules(self):
+        """Check available modules in Zoho CRM"""
+        try:
+            # Make a request to list all modules
+            url = f"{self.current_domain['base_url']}/settings/modules"
+            headers = {
+                'Authorization': f'Zoho-oauthtoken {self.access_token}'
+            }
+            
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                modules = response.json()
+                self.logger.info("Available Zoho CRM modules:")
+                for module in modules.get('modules', []):
+                    self.logger.info(f"API Name: {module.get('api_name')} - Display Name: {module.get('module_name')}")
+                return modules
+            else:
+                self.logger.error(f"Failed to fetch modules: {response.text}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error checking modules: {str(e)}")
+            return None
+    def get_existing_unit(self, unit_code: str) -> Optional[Dict[str, Any]]:
+        """Find existing unit by Unit_Code"""
+        try:
+            if not self.current_domain:
+                raise Exception("No valid Zoho domain found")
+                
+            url = f"{self.current_domain['base_url']}/CustomModule1/search"
+            headers = {
+                'Authorization': f'Zoho-oauthtoken {self.access_token}',
+            }
+            
+            # Search criteria
+            params = {
+                'criteria': f'(Unit_Code:equals:{unit_code})'
+            }
+            
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response.status_code == 401:
+                self.refresh_token()
+                return self.get_existing_unit(unit_code)
+                
+            data = response.json()
+            if data.get('data'):
+                return data['data'][0]
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error finding existing unit: {str(e)}")
+            return None
+
+    def get_contact_by_odoo_id(self, odoo_id: str) -> Optional[Dict[str, Any]]:
+        """Find contact using Odoo_ID field"""
+        try:
+            if not self.current_domain:
+                raise Exception("No valid Zoho domain found")
+                
+            url = f"{self.current_domain['base_url']}/Contacts/search"
+            headers = {
+                'Authorization': f'Zoho-oauthtoken {self.access_token}',
+            }
+            
+            params = {
+                'criteria': f'(Odoo_ID:equals:{odoo_id})'
+            }
+            
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response.status_code == 401:
+                self.refresh_token()
+                return self.get_contact_by_odoo_id(odoo_id)
+                
+            data = response.json()
+            if data.get('data'):
+                return data['data'][0]
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error finding contact by Odoo ID: {str(e)}")
+            return None
+
+    def update_record(self, module: str, record_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update existing record in Zoho CRM"""
+        try:
+            if not self.current_domain:
+                raise Exception("No valid Zoho domain found")
+                
+            url = f"{self.current_domain['base_url']}/{module}/{record_id}"
+            headers = {
+                'Authorization': f'Zoho-oauthtoken {self.access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {'data': [data]}
+            response = requests.put(url, headers=headers, json=payload)
+            
+            if response.status_code == 401:
+                self.refresh_token()
+                return self.update_record(module, record_id, data)
+                
+            return response.json()
+            
+        except Exception as e:
+            self.logger.error(f"Error updating record: {str(e)}")
+            return None

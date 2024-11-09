@@ -122,7 +122,10 @@ def main():
     # 2. List all CRM-related models
     print("\nSearching for CRM-related models...")
     inspector.list_models('crm')
-    
+
+    # 3. List all contact-related models
+    print("\nSearching for contact-related models...")
+    inspector.list_models('contact')
     # Let user specify a model to inspect
     model_name = input("\nEnter model name to inspect (e.g., crm.lead): ")
     if model_name:
@@ -130,7 +133,7 @@ def main():
         inspector.get_fields(model_name)
         
         # Show sample record
-        inspector.inspect_record(model_name)
+        # inspector.inspect_record(model_name)
 
 if __name__ == "__main__":
     main()

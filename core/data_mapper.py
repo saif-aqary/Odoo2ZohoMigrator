@@ -228,6 +228,387 @@ class PropertyMapper:
             amenities.extend([str(f) for f in odoo_property['facilities_ids']])
             
         return ';'.join(amenities) if amenities else ''
+    
+class UnitMapper:
+    """Maps Odoo property/unit fields to Zoho CRM fields based on exact Zoho field specifications"""
+
+    # Property type mapping based on account_asset.csv
+    PROPERTY_TYPE_MAPPING = {
+        'apartment': 'Apartment',
+        'villa': 'Villa',
+        'warehouse': 'Warehouse',
+        'commercial_villa': 'Commercial Villa',
+        'mixed_used_building': 'Mixed Used Building',
+        'commercial_building': 'Commercial Building',
+        'townhouse': 'Townhouse',
+        'plot': 'Residential Land',
+        'commercial_plot': 'Commercial Land',
+        'residential_building': 'Residential Building',
+        'retail': 'Retail',
+        'office': 'Office',
+        'labour_camp': 'Labour Camp',
+        'multiple_units': 'Bulk Units'
+    }
+    
+    # Bedroom mapping based on unit.bedrooms_unit_types.csv
+    BEDROOM_MAPPING = {
+        'Studio': 'Studio',
+        '0': '0',
+        '1': '1',
+        '2': '2',
+        '3': '3',
+        '4': '4',
+        '5': '5',
+        '6': '6',
+        '7': '7',
+        '8': '8',
+        'NULL': 'N/A',
+        'n/a': 'N/A'
+    }
+    
+    # Mapping for property status
+    PROPERTY_STATUS_MAPPING = {
+        'draft': 'Available',
+        'book': 'Reserved',
+        'normal': 'Leased',
+        'close': 'Sold',
+        'sold': 'Sold',
+        'cancel': 'Cancelled',
+        'block': 'Blocked',
+        'upcoming': 'Upcoming'
+    }
+    
+    # Mapping for property details (sale/rent)
+    PROPERTY_DETAILS_MAPPING = {
+        'sale': 'For Sale',
+        'rent': 'For Rent',
+        'both': 'None'
+    }
+
+    # Mapping for furnishing status
+    FURNISHING_MAPPING = {
+        'none': 'NO',
+        'semi_furnished': 'YES',
+        'full_furnished': 'YES'
+    }
+
+    @staticmethod
+    def extract_relation_name(relation: Any) -> str:
+        """Extract name from a many2one relation safely"""
+        if isinstance(relation, (list, tuple)) and len(relation) > 1:
+            return relation[1]
+        return ''
+
+    @staticmethod
+    def map_unit(odoo_unit: Dict[str, Any],  is_update: bool = False) -> Optional[Dict[str, Any]]:
+        """Map Odoo unit/property fields to Zoho CRM fields"""
+        try:
+            # Basic validation
+            if not odoo_unit.get('name'):
+                return None
+             # Check ownership type - only proceed if freehold or leashold
+            ownership_type = odoo_unit.get('ownership_type')
+            if ownership_type not in ['freehold', 'leashold']:
+                return None
+            print(odoo_unit)
+            print('------------------------------------------------------------------------')
+            print(odoo_unit.get('ref_no'))
+
+            # Get community and sub-community as text
+            community = UnitMapper.get_relation_name(odoo_unit.get('property_community_id'))
+            sub_community = UnitMapper.get_relation_name(odoo_unit.get('property_sub_community_id'))
+
+            zoho_unit = {
+                # Basic Unit Information
+                'Unit_Code': odoo_unit.get('property_code'),
+                'Property_Title': odoo_unit.get('name'),
+                'Unit_No': odoo_unit.get('unit_number'),
+                'Ref_No': odoo_unit.get('ref_no'),
+                
+                # Location Information - Converting dropdowns to text
+                'Locality': community,  # Using community as locality
+                'Sub_Locality': sub_community,  # Using sub-community as sub-locality
+                'City': UnitMapper.get_relation_name(odoo_unit.get('city_id')),
+                'State': UnitMapper.get_relation_name(odoo_unit.get('state_id')),
+                'Country': UnitMapper.get_relation_name(odoo_unit.get('country_id')),
+                
+                # Property Type and Status
+                'Unit_Types': UnitMapper.PROPERTY_TYPE_MAPPING.get(
+                    odoo_unit.get('type', '').lower(), 
+                    UnitMapper.get_relation_name(odoo_unit.get('unit_type_id'))
+                ),
+                'Status': odoo_unit.get('state'),
+                'Possession_Status': 'Under Construction' if odoo_unit.get('off_plan_property') else 'Ready',
+                
+                # Property Features
+                'Bedrooms': UnitMapper.BEDROOM_MAPPING.get(
+                    str(odoo_unit.get('bedroom', '')), 
+                    str(odoo_unit.get('bedroom', ''))
+                ),
+                'Bathrooms': str(odoo_unit.get('bathroom', '')),
+                'Floor_No': odoo_unit.get('floor_number'),
+                'Total_Area': odoo_unit.get('total_area'),
+                'Internal_Area_UOM': odoo_unit.get('builtup_area'),
+                'External_Area_UOM': odoo_unit.get('plot_area'),
+                
+                # Financial Information
+                'Unit_Sale_Price': UnitMapper.clean_currency(odoo_unit.get('selling_price')),
+                'Rent_Amount': UnitMapper.clean_currency(odoo_unit.get('rent_per_year')),
+                'Price_Per_UOM': UnitMapper.clean_currency(odoo_unit.get('price_per_sqt_foot')),
+                'Maintenance_fee': UnitMapper.clean_currency(odoo_unit.get('service_charge')),
+                'No_of_Cheques': odoo_unit.get('no_of_cheques'),
+                'Payment_Allocated': UnitMapper.clean_currency(odoo_unit.get('payment_allocated')),
+                'Total_Value': UnitMapper.clean_currency(odoo_unit.get('total_price')),
+                'Discount_Amount': UnitMapper.clean_currency(odoo_unit.get('discount')),
+                
+                # Dates and Timestamps
+                'Created_On': odoo_unit.get('create_date'),
+                'Listing_Date': odoo_unit.get('listing_date'),
+                
+                # Additional Details
+                'Property_Description': odoo_unit.get('marketing_desc'),
+                'Property_Description_AR': odoo_unit.get('marketing_desc_arabic'),
+                'Property_Title_AR': odoo_unit.get('name_arabic'),
+                'Permit_Number': odoo_unit.get('permit_number'),
+                'Geopoints': f"{odoo_unit.get('latitude', '')},{odoo_unit.get('longitude', '')}" if odoo_unit.get('latitude') and odoo_unit.get('longitude') else '',
+                
+                # Agent Information
+                'Agent_Name': odoo_unit.get('agent_name'),
+                'Agent_Email': odoo_unit.get('agent_email'),
+                'Agent_Phone': odoo_unit.get('agent_phone'),
+                'Agent_ID': odoo_unit.get('agent_id'),
+                
+                # Tracking Information
+                'Properties_Units_Id': f"odoo_{odoo_unit.get('id')}",
+                'Exchange_Rate': UnitMapper.clean_currency(odoo_unit.get('exchange_rate')),
+                'Currency': odoo_unit.get('currency', 'AED')
+            }
+
+            # Handle amenities and features
+            if odoo_unit.get('amenities_ids'):
+                amenities = [am[1] for am in odoo_unit['amenities_ids'] if isinstance(am, (list, tuple))]
+                if amenities:
+                    zoho_unit['Private_Amenities'] = ';'.join(amenities)
+
+            if odoo_unit.get('commercial_amenities_ids'):
+                comm_amenities = [am[1] for am in odoo_unit['commercial_amenities_ids'] if isinstance(am, (list, tuple))]
+                if comm_amenities:
+                    zoho_unit['Commercial_Amenities'] = ';'.join(comm_amenities)
+
+            print(zoho_unit)
+
+            
+            # Only include Unit_Code for new records
+            if not is_update:
+                zoho_unit['Unit_Code'] = odoo_unit.get('property_code')
+
+            # Clean up empty values
+            return {k: v for k, v in zoho_unit.items() if v not in (None, '', False)}
+
+        except Exception as e:
+            print(f"Error mapping unit {odoo_unit.get('name', 'Unknown')}: {str(e)}")
+            return None
+
+    @staticmethod
+    def clean_currency(value: Any) -> Optional[float]:
+        """Clean and validate currency values"""
+        try:
+            if isinstance(value, (int, float)):
+                return float(value)
+            elif isinstance(value, str):
+                cleaned = ''.join(c for c in value if c.isdigit() or c == '.')
+                return float(cleaned) if cleaned else None
+            return None
+        except (ValueError, TypeError):
+            return None
+        
+    @staticmethod
+    def get_relation_name(relation: Any) -> str:
+        """Extract name from a many2one relation tuple"""
+        if isinstance(relation, (list, tuple)) and len(relation) > 1:
+            return relation[1]
+        return ''
+
+    @staticmethod
+    def format_geopoints(latitude: Any, longitude: Any) -> str:
+        """Format latitude and longitude into geopoints string"""
+        try:
+            if latitude and longitude:
+                return f"{float(latitude)},{float(longitude)}"
+            return ''
+        except (ValueError, TypeError):
+            return ''
+        
+    @staticmethod
+    def generate_reference(odoo_unit: Dict[str, Any]) -> str:
+        """Generate a unique reference for the property"""
+        ref_parts = []
+        
+        if odoo_unit.get('ref_no'):
+            ref_parts.append(odoo_unit['ref_no'])
+        elif odoo_unit.get('property_code'):
+            ref_parts.append(odoo_unit['property_code'])
+            
+        if odoo_unit.get('property_community_id'):
+            ref_parts.append(odoo_unit['property_community_id'][1][:3].upper())
+            
+        if not ref_parts:
+            ref_parts.append(f"PROP{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            
+        return '_'.join(ref_parts)
+
+    @staticmethod
+    def clean_currency(value: Any) -> Optional[float]:
+        """Clean and validate currency values"""
+        try:
+            if isinstance(value, (int, float)):
+                return float(value)
+            elif isinstance(value, str):
+                # Remove currency symbols and commas
+                cleaned = ''.join(c for c in value if c.isdigit() or c == '.')
+                return float(cleaned) if cleaned else None
+            return None
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def map_unit(odoo_unit: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Map Odoo unit/property fields to Zoho CRM fields"""
+        try:
+            # Basic validation
+            if not odoo_unit.get('name'):
+                return None
+
+            # Base property data
+            zoho_property = {
+                'Name': odoo_unit.get('name', ''),
+                'Property_Code': odoo_unit.get('property_code', ''),
+                'Unit_Number': odoo_unit.get('unit_number', ''),
+                'Property_Type': UnitMapper.PROPERTY_TYPE_MAPPING.get(
+                    odoo_unit.get('unit_type_id', ''), 'Other'
+                ),
+                'Status': UnitMapper.PROPERTY_STATUS_MAPPING.get(
+                    odoo_unit.get('state', ''), 'Available'
+                ),
+                'Description': odoo_unit.get('marketing_desc', ''),
+                'Odoo_ID': str(odoo_unit.get('id')),
+            }
+
+            # Location details
+            location_data = {
+                'Community': odoo_unit.get('property_community_id', [False, ''])[1],
+                'Sub_Community': odoo_unit.get('property_sub_community_id', [False, ''])[1],
+                'Street': odoo_unit.get('street', ''),
+                'City': UnitMapper.extract_relation_name(odoo_unit.get('city_id')),  
+                'Emirate': UnitMapper.extract_relation_name(odoo_unit.get('state_id')),  
+                'Floor_Number': odoo_unit.get('floor_number', ''),
+                'Location_URL': odoo_unit.get('location_url', ''),
+                'Google_Maps_URL': odoo_unit.get('google_map', '')
+            }
+            zoho_property.update(location_data)
+
+            # Property specifications
+            specs_data = {
+                'Bedrooms': odoo_unit.get('bedroom', ''),
+                'Bathrooms': odoo_unit.get('bathroom', ''),
+                'Built_Up_Area_sq_ft': UnitMapper.clean_currency(odoo_unit.get('builtup_area')),
+                'Plot_Area': odoo_unit.get('plot_area', ''),
+                'Furnishing': odoo_unit.get('furnished', 'none'),
+                'Parking_Spaces': odoo_unit.get('parking', ''),
+                'View': odoo_unit.get('primary_view_id', [False, ''])[1],
+                'Unit_Condition': odoo_unit.get('unit_condition_id', [False, ''])[1]
+            }
+            zoho_property.update(specs_data)
+
+            # Financial details
+            financial_data = {
+                'Sale_Price': UnitMapper.clean_currency(odoo_unit.get('selling_price')),
+                'Rent_Price': UnitMapper.clean_currency(odoo_unit.get('rent_per_year')),
+                'Price_Per_Sq_Ft': UnitMapper.clean_currency(odoo_unit.get('price_per_sqt_foot')),
+                'Service_Charge': UnitMapper.clean_currency(odoo_unit.get('service_charge')),
+                'Security_Deposit': UnitMapper.clean_currency(odoo_unit.get('security_deposit')),
+                'Number_of_Cheques': odoo_unit.get('no_of_cheques', 0)
+            }
+            zoho_property.update(financial_data)
+
+            # Additional details
+            additional_data = {
+                'Title_Deed_Number': odoo_unit.get('title_deed_no', ''),
+                'Permit_Number': odoo_unit.get('permit_number', ''),
+                'Developer': odoo_unit.get('developer', ''),
+                'Completion_Status': odoo_unit.get('completion_status', ''),
+                'Completion_Date': odoo_unit.get('completion_date', ''),
+                'Handover_Date': odoo_unit.get('handover_date', ''),
+                'Off_Plan': odoo_unit.get('off_plan_property', False),
+                'Available_From': odoo_unit.get('available_date', ''),
+                'Key_Location': odoo_unit.get('key_status', '')
+            }
+            zoho_property.update(additional_data)
+
+            # Marketing information
+            marketing_data = {
+                'Marketing_Title': odoo_unit.get('marketing_title', ''),
+                'Marketing_Description': odoo_unit.get('marketing_desc', ''),
+                'Video_URL': odoo_unit.get('video_url', ''),
+                'Virtual_Tour_URL': odoo_unit.get('view360_url', ''),
+                'Listing_Type': 'New Sale' if odoo_unit.get('listing_type') == 'new' else 'Resale',
+                'Mandate_Type': 'Exclusive' if odoo_unit.get('mandate') == 'exclusive' else 'Open',
+                'Portal_Listing': bool(odoo_unit.get('web_portal_ids'))
+            }
+            zoho_property.update(marketing_data)
+
+            # Clean up empty values
+            return {k: v for k, v in zoho_property.items() if v not in (None, '', False)}
+
+        except Exception as e:
+            print(f"Error mapping unit {odoo_unit.get('name', 'Unknown')}: {str(e)}")
+            return None
+
+    @staticmethod
+    def map_amenities(odoo_unit: Dict[str, Any]) -> list:
+        """Extract and map amenities from Odoo unit"""
+        amenities = []
+        
+        # Get amenities from many2many fields
+        if odoo_unit.get('amen_ids'):
+            amenities.extend([amen[1] for amen in odoo_unit['amen_ids']])
+        
+        # Add facilities
+        if odoo_unit.get('faci_ids'):
+            amenities.extend([fac[1] for fac in odoo_unit['faci_ids']])
+            
+        # Add features based on boolean fields
+        feature_mappings = {
+            'parking': 'Parking',
+            'full_floor': 'Full Floor',
+            'vacant': 'Vacant',
+            'multiple_owners': 'Multiple Owners',
+            'car_park_allowed': 'Car Parking'
+        }
+        
+        for field, feature in feature_mappings.items():
+            if odoo_unit.get(field):
+                amenities.append(feature)
+                
+        return list(set(amenities))  # Remove duplicates
+
+    @staticmethod
+    def generate_reference(odoo_unit: Dict[str, Any]) -> str:
+        """Generate a unique reference for the property"""
+        ref_parts = []
+        
+        if odoo_unit.get('property_code'):
+            ref_parts.append(odoo_unit['property_code'])
+        elif odoo_unit.get('unit_number'):
+            ref_parts.append(odoo_unit['unit_number'])
+            
+        if odoo_unit.get('property_community_id'):
+            ref_parts.append(odoo_unit['property_community_id'][1][:3].upper())
+            
+        if not ref_parts:
+            ref_parts.append(f"PROP{datetime.now().strftime('%Y%m%d%H%M%S')}")
+            
+        return '_'.join(ref_parts)
 
 class DataMapper:
     contact_mapper = ContactMapper()
