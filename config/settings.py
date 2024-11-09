@@ -15,8 +15,8 @@ ZOHO_CONFIG = {
 }
 
 # Migration settings
-BATCH_SIZE = 50
-MAX_WORKERS = 4  # Will be overridden by CPU count in main.py
+BATCH_SIZE = 200
+MAX_WORKERS = 7  # Will be overridden by CPU count in main.py
 RATE_LIMIT_DELAY = 0.3  # seconds between API calls
 UPDATE_INTERVAL = 5  # seconds between progress updates
 MAX_RETRIES = 3

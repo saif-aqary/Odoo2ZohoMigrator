@@ -9,6 +9,9 @@ class ContactMapper:
     @staticmethod
     def map_contact(odoo_contact: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Map Odoo contact fields to Zoho contact fields with validation"""
+        
+        print('odoo_contact:         ', odoo_contact)
+        print('-------------------------------------------')
         try:
             # Clean and validate name
             full_name = DataValidator.validate_name(odoo_contact.get('name', ''))
@@ -51,6 +54,8 @@ class LeadMapper:
     def map_lead(odoo_lead: Dict[str, Any], contact_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Map Odoo lead fields to Zoho lead fields with validation"""
         logger = logging.getLogger(__name__)
+        print('odoo_lead:         ', odoo_lead)
+        print('-------------------------------------------')
         try:
             logger.debug(f"Mapping lead: {odoo_lead}")
 
@@ -141,10 +146,15 @@ class LeadMapper:
             logger.error(f"Error mapping lead: {str(e)}")
             logger.debug(f"Original lead data: {odoo_lead}")
             return None
+        
+        
+        
 class PropertyMapper:
     # @staticmethod
     def map_property(self , odoo_property: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Map Odoo property fields to Zoho property fields with validation"""
+        print('odoo_property:         ', odoo_property)
+        print('-------------------------------------------')
         try:
             # Check ownership type - only proceed if freehold or leashold
             ownership_type = odoo_property.get('ownership_type')
@@ -310,9 +320,10 @@ class UnitMapper:
             ownership_type = odoo_unit.get('ownership_type')
             if ownership_type not in ['freehold', 'leashold']:
                 return None
+            
             print(odoo_unit)
             print('------------------------------------------------------------------------')
-            print(odoo_unit.get('ref_no'))
+            # print(odoo_unit.get('ref_no'))
 
             # Get community and sub-community as text
             community = UnitMapper.get_relation_name(odoo_unit.get('property_community_id'))
@@ -472,99 +483,6 @@ class UnitMapper:
             return None
 
     @staticmethod
-    def map_unit(odoo_unit: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Map Odoo unit/property fields to Zoho CRM fields"""
-        try:
-            # Basic validation
-            if not odoo_unit.get('name'):
-                return None
-
-            # Base property data
-            zoho_property = {
-                'Name': odoo_unit.get('name', ''),
-                'Property_Code': odoo_unit.get('property_code', ''),
-                'Unit_Number': odoo_unit.get('unit_number', ''),
-                'Property_Type': UnitMapper.PROPERTY_TYPE_MAPPING.get(
-                    odoo_unit.get('unit_type_id', ''), 'Other'
-                ),
-                'Status': UnitMapper.PROPERTY_STATUS_MAPPING.get(
-                    odoo_unit.get('state', ''), 'Available'
-                ),
-                'Description': odoo_unit.get('marketing_desc', ''),
-                'Odoo_ID': str(odoo_unit.get('id')),
-            }
-
-            # Location details
-            location_data = {
-                'Community': odoo_unit.get('property_community_id', [False, ''])[1],
-                'Sub_Community': odoo_unit.get('property_sub_community_id', [False, ''])[1],
-                'Street': odoo_unit.get('street', ''),
-                'City': UnitMapper.extract_relation_name(odoo_unit.get('city_id')),  
-                'Emirate': UnitMapper.extract_relation_name(odoo_unit.get('state_id')),  
-                'Floor_Number': odoo_unit.get('floor_number', ''),
-                'Location_URL': odoo_unit.get('location_url', ''),
-                'Google_Maps_URL': odoo_unit.get('google_map', '')
-            }
-            zoho_property.update(location_data)
-
-            # Property specifications
-            specs_data = {
-                'Bedrooms': odoo_unit.get('bedroom', ''),
-                'Bathrooms': odoo_unit.get('bathroom', ''),
-                'Built_Up_Area_sq_ft': UnitMapper.clean_currency(odoo_unit.get('builtup_area')),
-                'Plot_Area': odoo_unit.get('plot_area', ''),
-                'Furnishing': odoo_unit.get('furnished', 'none'),
-                'Parking_Spaces': odoo_unit.get('parking', ''),
-                'View': odoo_unit.get('primary_view_id', [False, ''])[1],
-                'Unit_Condition': odoo_unit.get('unit_condition_id', [False, ''])[1]
-            }
-            zoho_property.update(specs_data)
-
-            # Financial details
-            financial_data = {
-                'Sale_Price': UnitMapper.clean_currency(odoo_unit.get('selling_price')),
-                'Rent_Price': UnitMapper.clean_currency(odoo_unit.get('rent_per_year')),
-                'Price_Per_Sq_Ft': UnitMapper.clean_currency(odoo_unit.get('price_per_sqt_foot')),
-                'Service_Charge': UnitMapper.clean_currency(odoo_unit.get('service_charge')),
-                'Security_Deposit': UnitMapper.clean_currency(odoo_unit.get('security_deposit')),
-                'Number_of_Cheques': odoo_unit.get('no_of_cheques', 0)
-            }
-            zoho_property.update(financial_data)
-
-            # Additional details
-            additional_data = {
-                'Title_Deed_Number': odoo_unit.get('title_deed_no', ''),
-                'Permit_Number': odoo_unit.get('permit_number', ''),
-                'Developer': odoo_unit.get('developer', ''),
-                'Completion_Status': odoo_unit.get('completion_status', ''),
-                'Completion_Date': odoo_unit.get('completion_date', ''),
-                'Handover_Date': odoo_unit.get('handover_date', ''),
-                'Off_Plan': odoo_unit.get('off_plan_property', False),
-                'Available_From': odoo_unit.get('available_date', ''),
-                'Key_Location': odoo_unit.get('key_status', '')
-            }
-            zoho_property.update(additional_data)
-
-            # Marketing information
-            marketing_data = {
-                'Marketing_Title': odoo_unit.get('marketing_title', ''),
-                'Marketing_Description': odoo_unit.get('marketing_desc', ''),
-                'Video_URL': odoo_unit.get('video_url', ''),
-                'Virtual_Tour_URL': odoo_unit.get('view360_url', ''),
-                'Listing_Type': 'New Sale' if odoo_unit.get('listing_type') == 'new' else 'Resale',
-                'Mandate_Type': 'Exclusive' if odoo_unit.get('mandate') == 'exclusive' else 'Open',
-                'Portal_Listing': bool(odoo_unit.get('web_portal_ids'))
-            }
-            zoho_property.update(marketing_data)
-
-            # Clean up empty values
-            return {k: v for k, v in zoho_property.items() if v not in (None, '', False)}
-
-        except Exception as e:
-            print(f"Error mapping unit {odoo_unit.get('name', 'Unknown')}: {str(e)}")
-            return None
-
-    @staticmethod
     def map_amenities(odoo_unit: Dict[str, Any]) -> list:
         """Extract and map amenities from Odoo unit"""
         amenities = []
@@ -617,6 +535,8 @@ class DataMapper:
     @staticmethod
     def map_record(odoo_record: Dict[str, Any], record_type: str) -> Optional[Dict[str, Any]]:
         """Map Odoo records based on type"""
+        print('odoo_record:             ', odoo_record)
+        print('---------------------------------------')
         if record_type == 'contact':
             return ContactMapper.map_contact(odoo_record)
         elif record_type == 'property':

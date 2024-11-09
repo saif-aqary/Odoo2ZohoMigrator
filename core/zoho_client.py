@@ -79,32 +79,32 @@ class ZohoClient:
 
     def create_record(self, module: str, data: Dict[str, Any], retry_count: int = 0) -> Optional[Dict[str, Any]]:
         """Create a record in Zoho CRM"""
-        try:
-            if not self.current_domain:
-                raise Exception("No valid Zoho domain found")
-                
-            url = f"{self.current_domain['base_url']}/{module}"
-            headers = {
-                'Authorization': f'Zoho-oauthtoken {self.access_token}',
-                'Content-Type': 'application/json'
-            }
+        # try:
+        if not self.current_domain:
+            raise Exception("No valid Zoho domain found")
             
-            payload = {'data': [data]}
-            response = requests.post(url, headers=headers, json=payload)
+        url = f"{self.current_domain['base_url']}/{module}"
+        headers = {
+            'Authorization': f'Zoho-oauthtoken {self.access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {'data': [data]}
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 401 and retry_count < 3:
+            self.refresh_token()
+            return self.create_record(module, data, retry_count + 1)
             
-            if response.status_code == 401 and retry_count < 3:
-                self.refresh_token()
-                return self.create_record(module, data, retry_count + 1)
-                
-            response_data = response.json()
-            return response_data
+        response_data = response.json()
+        return response_data
             
-        except Exception as e:
-            self.logger.error(f"Error creating Zoho record: {str(e)}")
-            if retry_count < 3:
-                time.sleep(1)
-                return self.create_record(module, data, retry_count + 1)
-            return None
+        # except Exception as e:
+        #     self.logger.error(f"Error creating Zoho record: {str(e)}")
+        #     if retry_count < 3:
+        #         time.sleep(1)
+        #         return self.create_record(module, data, retry_count + 1)
+        #     return None
 
     def get_contact_map(self) -> Dict[str, str]:
         """Fetch all contacts and create a mapping of mobile/email to Zoho contact ID"""
@@ -256,33 +256,33 @@ class ZohoClient:
 
     def get_contact_by_odoo_id(self, odoo_id: str) -> Optional[Dict[str, Any]]:
         """Find contact using Odoo_ID field"""
-        try:
-            if not self.current_domain:
-                raise Exception("No valid Zoho domain found")
-                
-            url = f"{self.current_domain['base_url']}/Contacts/search"
-            headers = {
-                'Authorization': f'Zoho-oauthtoken {self.access_token}',
-            }
+        # try:
+        if not self.current_domain:
+            raise Exception("No valid Zoho domain found")
             
-            params = {
-                'criteria': f'(Odoo_ID:equals:{odoo_id})'
-            }
+        url = f"{self.current_domain['base_url']}/Contacts/search"
+        headers = {
+            'Authorization': f'Zoho-oauthtoken {self.access_token}',
+        }
+        
+        params = {
+            'criteria': f'(Odoo_ID:equals:{odoo_id})'
+        }
+        
+        response = requests.get(url, headers=headers, params=params)
+        
+        if response.status_code == 401:
+            self.refresh_token()
+            return self.get_contact_by_odoo_id(odoo_id)
+        
+        data = response.json()
+        if data.get('data'):
+            return data['data']
+        return None
             
-            response = requests.get(url, headers=headers, params=params)
-            
-            if response.status_code == 401:
-                self.refresh_token()
-                return self.get_contact_by_odoo_id(odoo_id)
-                
-            data = response.json()
-            if data.get('data'):
-                return data['data'][0]
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Error finding contact by Odoo ID: {str(e)}")
-            return None
+        # except Exception as e:
+        #     self.logger.error(f"Error finding contact by Odoo ID: {str(e)}")
+        #     return None
 
     def update_record(self, module: str, record_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update existing record in Zoho CRM"""

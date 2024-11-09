@@ -29,7 +29,7 @@ class OdooClient:
             self.logger.error(f"Failed to connect to Odoo: {str(e)}")
             raise
 
-    def fetch_records(self, model: str, fields: List[str] = None, domain: List = None, batch_size: int = 100) -> List[Dict[str, Any]]:
+    def fetch_records(self, model: str, fields: List[str] = None, domain: List = None, batch_size: int = 10) -> List[Dict[str, Any]]:
         """Fetch records from Odoo with progress bar"""
         try:
             if domain is None:
@@ -37,34 +37,34 @@ class OdooClient:
             if fields is None:
                 fields = []
 
-            total_count = self.models.execute_kw(
-                self.config['db'], self.uid, self.config['password'],
-                model, 'search_count', [domain]
-            )
+            # total_count = self.models.execute_kw(
+            #     self.config['db'], self.uid, self.config['password'],
+            #     model, 'search_count', [domain]
+            # )
 
-            self.logger.info(f"Total records to fetch: {total_count}")
+            # self.logger.info(f"Total records to fetch: {total_count}")
 
             all_records = []
-            with tqdm(total=total_count, desc="Fetching Odoo records") as pbar:
-                offset = 0
-                while offset < total_count:
-                    records = self.models.execute_kw(
-                        self.config['db'], self.uid, self.config['password'],
-                        model, 'search_read',
-                        [domain],
-                        {
-                            'fields': fields,
-                            'offset': offset,
-                            'limit': batch_size
-                        }
-                    )
-                    
-                    if not records:
-                        break
-                        
-                    all_records.extend(records)
-                    offset += len(records)
-                    pbar.update(len(records))
+            # with tqdm(total=total_count, desc="Fetching Odoo records") as pbar:
+                # offset = 0
+                # while offset < total_count:
+            records = self.models.execute_kw(
+                self.config['db'], self.uid, self.config['password'],
+                model, 'search_read',
+                [domain],
+                {
+                    'fields': fields,
+                    # 'offset': offset,
+                    'limit': batch_size
+                }
+            )
+            
+            # if not records:
+            #     break
+                
+            all_records.extend(records)
+            # offset += len(records)
+            # pbar.update(len(records))
 
             self.logger.info(f"Successfully fetched {len(all_records)} records from Odoo")
             return all_records

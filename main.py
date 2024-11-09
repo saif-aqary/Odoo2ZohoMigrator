@@ -18,7 +18,7 @@ from core.data_mapper import ContactMapper, LeadMapper, PropertyMapper , UnitMap
 from utils.logger import setup_logger
 
 class MigrationManager:
-    def __init__(self, max_workers: int = 4):
+    def __init__(self, max_workers: int = 7):
         self.logger = setup_logger(__name__)
         self.odoo_client = OdooClient(ODOO_CONFIG)
         
@@ -34,7 +34,7 @@ class MigrationManager:
         self.unit_mapper = UnitMapper()
         self.max_workers = max_workers
         self.stop_event = Event()
-        
+
         # Statistics
         self.processed_count = 0
         self.success_count = 0
@@ -166,6 +166,7 @@ class MigrationManager:
                 fields=property_fields,
                 domain=domain,
                 batch_size=BATCH_SIZE
+                
             )
             
             self.total_records = len(properties)
@@ -176,7 +177,9 @@ class MigrationManager:
                 for prop in properties:
                     if self.stop_event.is_set():
                         break
-                        
+                    
+                    print('prop:      ', prop)
+                    print('------------------------------------')
                     try:
                         mapped_property = self.property_mapper.map_property(prop)
                         if mapped_property:
@@ -233,11 +236,11 @@ class MigrationManager:
             
             batches = [leads[i:i + BATCH_SIZE] 
                       for i in range(0, len(leads), BATCH_SIZE)]
-            
+
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 self.logger.info(f"Starting migration with {self.max_workers} workers")
                 futures = []
-                
+
                 for batch in batches:
                     future = executor.submit(
                         self.process_lead_batch, 
@@ -274,55 +277,70 @@ class MigrationManager:
         except Exception as e:
             self.logger.error(f"Lead migration failed: {str(e)}")
             raise
+        
     def create_owner_contact(self, owner_data: Dict[str, Any]) -> Optional[str]:
         """Create a new contact in Zoho for the property owner"""
-        try:
-            # Extract owner name
-            full_name = owner_data.get('name', '').strip()
-            if not full_name:
-                self.logger.warning("Cannot create contact without name")
-                return None
-                
-            # Split name into first and last name
-            name_parts = full_name.split(' ', 1)
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else 'Unknown'
-            
-            # Prepare contact data
-            contact_data = {
-                'First_Name': first_name,
-                'Last_Name': last_name,
-                'Email': owner_data.get('email', ''),
-                'Phone': owner_data.get('phone', ''),
-                'Mobile': owner_data.get('mobile', ''),
-                'Contact_Type': 'Property Owner',
-                'Description': 'Automatically created during property migration',
-                'Source': 'Odoo Migration'
-            }
-            
-            # Add address if available
-            if owner_data.get('address'):
-                contact_data.update({
-                    'Mailing_Street': owner_data.get('address', ''),
-                    'Mailing_City': owner_data.get('city', ''),
-                    'Mailing_State': owner_data.get('state', ''),
-                    'Mailing_Country': owner_data.get('country', '')
-                })
-            
-            # Create contact in Zoho
-            result = self.zoho_client.create_record('Contacts', contact_data)
-            
-            if result and result.get('data', [{}])[0].get('status') == 'success':
-                contact_id = result['data'][0]['details']['id']
-                self.logger.info(f"Successfully created contact for owner: {full_name}")
-                return contact_id
-            else:
-                self.logger.error(f"Failed to create contact for owner: {full_name}")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"Error creating contact: {str(e)}")
+
+        print('owner_data:       ', owner_data)
+        print('------------------------------------')
+
+        # try:
+        # Extract owner name
+        full_name = owner_data.get('name', '').strip()
+        if not full_name:
+            self.logger.warning("Cannot create contact without name")
             return None
+            
+        # Split name into first and last name
+        # name_parts = full_name.split(' ', 1)
+        # first_name = name_parts[0]
+        # last_name = name_parts[1] if len(name_parts) > 1 else 'Unknown'
+
+        # Prepare contact data
+        contact_data = {
+            'First_Name': owner_data.get('name', '').strip(),
+            'Last_Name': owner_data.get('name', '').strip(),
+            'Email': owner_data.get('email', ''),
+            'Phone': owner_data.get('phone', ''),
+            'Mobile': owner_data.get('mobile', ''),
+            'Contact_Type': 'Property Owner',
+            'Description': 'Automatically created during property migration',
+            'Source': 'Odoo Migration'
+        }
+        if contact_data['Email'] == False:
+            contact_data['Email'] = ''
+        
+        if contact_data['Phone'] == False:
+            contact_data['Phone'] = ''
+        
+        if contact_data['Mobile'] == False:
+            return None
+        
+        # Add address if available
+        if owner_data.get('address'):
+            contact_data.update({
+                'Mailing_Street': owner_data.get('address', ''),
+                'Mailing_City': owner_data.get('city', ''),
+                'Mailing_State': owner_data.get('state', ''),
+                'Mailing_Country': owner_data.get('country', '')
+            })
+        
+        print(contact_data)
+        # Create contact in Zoho
+        result = self.zoho_client.create_record('Contacts', contact_data)
+        print("result:      ", result)
+        
+        if result and result.get('data', [{}])[0].get('status') == 'success':
+            contact_id = result['data'][0]['details']['id']
+            self.logger.info(f"Successfully created contact for owner: {full_name}")
+            return contact_id
+        else:
+            self.logger.error(f"Failed to create contact for owner: {full_name}")
+            return None
+                
+        # except Exception as e:
+        #     self.logger.error(f"Error creating contact: {str(e)}")
+        #     return None
 
     def get_or_create_owner_contact(self, owner_data: Dict[str, Any], contact_map: Dict[str, str]) -> Optional[str]:
         """Get existing contact ID or create new contact for owner"""
@@ -355,155 +373,98 @@ class MigrationManager:
             if self.stop_event.is_set():
                 break
                 
-            try:
-                # Check if unit already exists
-                existing_unit = self.zoho_client.get_existing_unit(unit.get('property_code'))
-                is_update = existing_unit is not None
-                
-                # Extract owner information
-                owner_id = unit.get('owner_id', [False, False])
-                owner_data = {}
-                owner_contact_id = None
-                
-                if isinstance(owner_id, (list, tuple)) and len(owner_id) > 1:
-                    # First check if owner exists in Zoho by Odoo_ID
-                    owner_contact = self.zoho_client.get_contact_by_odoo_id(str(owner_id[0]))
-                    
-                    if owner_contact:
-                        owner_contact_id = owner_contact['id']
-                    else:
-                        # Fetch and create owner if not exists
-                        owner_data = self.odoo_client.fetch_records(
-                            'res.partner',
-                            fields=[
-                                'name', 'email', 'phone', 'mobile',
-                                'street', 'city', 'state_id', 'country_id'
-                            ],
-                            domain=[('id', '=', owner_id[0])],
-                            batch_size=1
-                        )
-                        if owner_data:
-                            owner_contact_id = self.get_or_create_owner_contact(owner_data[0], contact_map)
-                
-                # Map unit data based on whether it's an update or new record
-                zoho_unit = self.unit_mapper.map_unit(unit, is_update)
-                if not zoho_unit:
-                    self.logger.debug(f"Unit mapping failed, skipping unit: {unit.get('name')}")
-                    self.skipped_count += 1
-                    continue
-                
-                # Add owner reference if available
-                if owner_contact_id:
-                    zoho_unit['Unit_Owner_Name'] = owner_contact_id
-                
-                # Add amenities
-                amenities = self.unit_mapper.map_amenities(unit)
-                if amenities:
-                    zoho_unit['Private_Amenities'] = amenities
-                
-                self.logger.debug(f"Payload for {'update' if is_update else 'create'}: {zoho_unit}")
-                
-                if is_update:
-                    # Update existing record
-                    result = self.zoho_client.update_record(
-                        MODULE_NAME, 
-                        existing_unit['id'], 
-                        zoho_unit
-                    )
-                    operation = "updated"
-                else:
-                    # Create new record
-                    result = self.zoho_client.create_record(MODULE_NAME, zoho_unit)
-                    operation = "created"
-                
-                if result and result.get('data', [{}])[0].get('status') == 'success':
-                    self.success_count += 1
-                    self.logger.info(f"Successfully {operation} unit: {unit.get('name')}")
-                else:
-                    self.error_count += 1
-                    self.logger.error(f"Failed to {operation} unit {unit.get('name')}: {result}")
-                    results.append({
-                        'success': False,
-                        'name': unit.get('name'),
-                        'error': result,
-                        'operation': operation
-                    })
-                
-                self.processed_count += 1
-                time.sleep(RATE_LIMIT_DELAY)
-                
-            except Exception as e:
-                self.error_count += 1
-                self.logger.error(f"Error processing unit {unit.get('name')}: {str(e)}")
-                results.append({
-                    'success': False,
-                    'name': unit.get('name'),
-                    'error': str(e),
-                    'operation': 'processing'
-                })
-                self.processed_count += 1
-        
-        return results
-    
-    def process_unit(self, unit: Dict[str, Any]) -> bool:
-        """Process a single unit, handling both creation and updates"""
-        try:
+            # try:
             # Check if unit already exists
             existing_unit = self.zoho_client.get_existing_unit(unit.get('property_code'))
+            is_update = existing_unit is not None
             
-            # Handle owner contact first
+            # Extract owner information
             owner_id = unit.get('owner_id', [False, False])
-            owner_zoho_id = None
+            owner_data = {}
+            owner_contact_id = None
             
             if isinstance(owner_id, (list, tuple)) and len(owner_id) > 1:
-                # Check if owner contact exists in Zoho
+                # First check if owner exists in Zoho by Odoo_ID
+                print('owner_id:    ',  owner_id)
                 owner_contact = self.zoho_client.get_contact_by_odoo_id(str(owner_id[0]))
+                print('owner_contact:    ', owner_contact[0])
+                
+                print('owner_contact:    ', owner_contact[0]['Owner']['id'])
                 if owner_contact:
-                    owner_zoho_id = owner_contact['id']
+                    owner_contact_id = owner_contact[0]['Owner']['id']
                 else:
-                    # Create owner contact if needed
+                    # Fetch and create owner if not exists
                     owner_data = self.odoo_client.fetch_records(
                         'res.partner',
-                        fields=['name', 'email', 'phone', 'mobile'],
+                        fields=[
+                            'name', 'email', 'phone', 'mobile',
+                            'street', 'city', 'state_id', 'country_id'
+                        ],
                         domain=[('id', '=', owner_id[0])],
                         batch_size=1
                     )
                     if owner_data:
-                        contact_result = self.create_owner_contact(owner_data[0])
-                        if contact_result:
-                            owner_zoho_id = contact_result['id']
-
-            if existing_unit:
-                # Update existing unit
-                unit_data = self.unit_mapper.map_unit(unit, is_update=True)
-                if owner_zoho_id:
-                    unit_data['Unit_Owner_Name'] = owner_zoho_id
-                
-                result = self.zoho_client.update_record('CustomModule1', existing_unit['id'], unit_data)
-                if result and result.get('data', [{}])[0].get('status') == 'success':
-                    self.success_count += 1
-                    self.logger.info(f"Successfully updated unit: {unit.get('name')}")
-                    return True
+                        owner_contact_id = self.get_or_create_owner_contact(owner_data[0], contact_map)
+            
+            # Map unit data based on whether it's an update or new record
+            zoho_unit = self.unit_mapper.map_unit(unit, is_update)
+            if not zoho_unit:
+                self.logger.debug(f"Unit mapping failed, skipping unit: {unit.get('name')}")
+                self.skipped_count += 1
+                continue
+            
+            # Add owner reference if available
+            if owner_contact_id:
+                zoho_unit['Unit_Owner_Name'] = owner_contact_id
+            
+            # Add amenities
+            amenities = self.unit_mapper.map_amenities(unit)
+            if amenities:
+                zoho_unit['Private_Amenities'] = amenities
+            
+            self.logger.debug(f"Payload for {'update' if is_update else 'create'}: {zoho_unit}")
+            
+            if is_update:
+                # Update existing record
+                result = self.zoho_client.update_record(
+                    MODULE_NAME, 
+                    existing_unit['id'], 
+                    zoho_unit
+                )
+                operation = "updated"
             else:
-                # Create new unit
-                unit_data = self.unit_mapper.map_unit(unit)
-                if owner_zoho_id:
-                    unit_data['Unit_Owner_Name'] = owner_zoho_id
+                # Create new record
+                result = self.zoho_client.create_record(MODULE_NAME, zoho_unit)
+                operation = "created"
+            
+            if result and result.get('data', [{}])[0].get('status') == 'success':
+                self.success_count += 1
+                self.logger.info(f"Successfully {operation} unit: {unit.get('name')}")
+            else:
+                self.error_count += 1
+                self.logger.error(f"Failed to {operation} unit {unit.get('name')}: {result}")
+                results.append({
+                    'success': False,
+                    'name': unit.get('name'),
+                    'error': result,
+                    'operation': operation
+                })
+            
+            self.processed_count += 1
+            time.sleep(RATE_LIMIT_DELAY)
                 
-                result = self.zoho_client.create_record('CustomModule1', unit_data)
-                if result and result.get('data', [{}])[0].get('status') == 'success':
-                    self.success_count += 1
-                    self.logger.info(f"Successfully created unit: {unit.get('name')}")
-                    return True
-
-            self.error_count += 1
-            return False
-
-        except Exception as e:
-            self.error_count += 1
-            self.logger.error(f"Error processing unit {unit.get('name')}: {str(e)}")
-            return False
-   
+            # except Exception as e:
+            #     self.error_count += 1
+            #     self.logger.error(f"Error processing unit {unit.get('name')}: {str(e)}")
+            #     results.append({
+            #         'success': False,
+            #         'name': unit.get('name'),
+            #         'error': str(e),
+            #         'operation': 'processing'
+            #     })
+            #     self.processed_count += 1
+        
+        return results
 
     def migrate_units(self):
         """Unit migration process with automatic contact creation"""
