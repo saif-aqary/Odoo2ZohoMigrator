@@ -402,7 +402,7 @@ class MigrationManager:
                     )
                     if owner_data:
                         owner_contact_id = self.get_or_create_owner_contact(owner_data[0], contact_map)
-            
+            self.logger.debug(f"unit: {unit}")
             # Map unit data based on whether it's an update or new record
             zoho_unit = self.unit_mapper.map_unit(unit, is_update)
             if not zoho_unit:
