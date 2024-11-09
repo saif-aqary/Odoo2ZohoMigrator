@@ -256,33 +256,52 @@ class ZohoClient:
 
     def get_contact_by_odoo_id(self, odoo_id: str) -> Optional[Dict[str, Any]]:
         """Find contact using Odoo_ID field"""
-        # try:
         if not self.current_domain:
             raise Exception("No valid Zoho domain found")
             
         url = f"{self.current_domain['base_url']}/Contacts/search"
         headers = {
             'Authorization': f'Zoho-oauthtoken {self.access_token}',
+            'Content-Type': 'application/json'  # Add content type header
         }
         
         params = {
             'criteria': f'(Odoo_ID:equals:{odoo_id})'
         }
         
-        response = requests.get(url, headers=headers, params=params)
-        
-        if response.status_code == 401:
-            self.refresh_token()
-            return self.get_contact_by_odoo_id(odoo_id)
-        
-        data = response.json()
-        if data.get('data'):
-            return data['data']
-        return None
+        try:
+            response = requests.get(url, headers=headers, params=params)
             
-        # except Exception as e:
-        #     self.logger.error(f"Error finding contact by Odoo ID: {str(e)}")
-        #     return None
+            # Log response details for debugging
+            self.logger.debug(f"Response status code: {response.status_code}")
+            self.logger.debug(f"Response headers: {response.headers}")
+            self.logger.debug(f"Response text: {response.text}")
+            
+            # Handle different response status codes
+            if response.status_code == 401:
+                self.refresh_token()
+                return self.get_contact_by_odoo_id(odoo_id)
+            elif response.status_code == 204:  # No content
+                return None
+            elif response.status_code != 200:
+                self.logger.error(f"Error response from Zoho: Status {response.status_code}")
+                return None
+                
+            # Only try to parse JSON if we have content
+            if response.text.strip():
+                try:
+                    data = response.json()
+                    if data.get('data'):
+                        return data['data']
+                except ValueError as e:
+                    self.logger.error(f"Invalid JSON response: {str(e)}")
+                    self.logger.error(f"Response content: {response.text}")
+            
+            return None
+            
+        except requests.RequestException as e:
+            self.logger.error(f"Request failed: {str(e)}")
+            return None
 
     def update_record(self, module: str, record_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update existing record in Zoho CRM"""

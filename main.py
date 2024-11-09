@@ -387,9 +387,6 @@ class MigrationManager:
                 # First check if owner exists in Zoho by Odoo_ID
                 print('owner_id:    ',  owner_id)
                 owner_contact = self.zoho_client.get_contact_by_odoo_id(str(owner_id[0]))
-                print('owner_contact:    ', owner_contact[0])
-                
-                print('owner_contact:    ', owner_contact[0]['Owner']['id'])
                 if owner_contact:
                     owner_contact_id = owner_contact[0]['Owner']['id']
                 else:
@@ -549,15 +546,15 @@ class MigrationManager:
                     for future in as_completed(futures):
                         if self.stop_event.is_set():
                             break
-                        try:
-                            future.result()
-                            pbar.update(1)
-                            
-                            if pbar.n % 10 == 0:
-                                self.log_progress("Units")
+                        # try:
+                        future.result()
+                        pbar.update(1)
+                        
+                        if pbar.n % 10 == 0:
+                            self.log_progress("Units")
                                 
-                        except Exception as e:
-                            self.logger.error(f"Batch processing failed: {str(e)}")
+                        # except Exception as e:
+                        #     self.logger.error(f"Batch processing failed: {str(e)}")
 
             # Final summary
             end_time = time.time()
